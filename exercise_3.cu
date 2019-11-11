@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/time.h>
 
 struct Particle
 {
@@ -64,6 +65,14 @@ __host__ bool compareParticle(Particle particle1, Particle particle2)
 	return result;
 }
 
+
+double cpuSecond() 
+{
+   struct timeval tp;
+   gettimeofday(&tp,NULL);
+   return ((double)tp.tv_sec + (double)tp.tv_usec*1.e-6);
+}
+
 int main(int argc, char** argv)
 {
 	const float dt = 1.0;
@@ -95,15 +104,28 @@ int main(int argc, char** argv)
 		particles_cpu[i].position.z = 1;
 	}
 
+
+	double iStart_HtoD = cpuSecond();
 	cudaMemcpy(particles_gpu, particles_cpu, NPARTICLES*sizeof(Particle), cudaMemcpyHostToDevice);
+	double iElaps_HtoD = cpuSecond() - iStart_HtoD;
 
-
-	// Launch kernel to compute and store distance values
+	double iStart_gpu = cpuSecond();
+	//GPU computation
 	for (int j = 0; j < NITER; j++) 
 	{
 		updateKernel<<<(NPARTICLES+TPB-1) / TPB, TPB>>>(particles_gpu, dt, j);
+	}
+	cudaDeviceSynchronize();
+	double iElaps_gpu = cpuSecond() - iStart_gpu;
+
+
+	double iStart_cpu = cpuSecond();
+	//CPU computation
+	for (int j = 0; j < NITER; j++) 
+	{
 		updateCPU(particles_cpu, dt, j, NPARTICLES);
 	}
+	double iElaps_cpu = cpuSecond() - iStart_cpu;
 
 
 	for (int i = 0; i < NPARTICLES; i++) {
@@ -112,6 +134,10 @@ int main(int argc, char** argv)
 			break;
 		}
 	}
+
+	/*double iStart_DtoH = cpuSecond();
+	cudaMemcpy(particles_cpu, particles_gpu, NPARTICLES*sizeof(Particle), cudaMemcpyDeviceToHost);
+	double iElaps_DtoH = cpuSecond() - iStart_DtoH; */
 
 	printf("Comparing the output for each implementation… ");
 	if (flag)
